@@ -2,6 +2,10 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Tell Express it is running behind Render's reverse proxy 
+// This makes req.ip clean and trustworthy
+app.set('trust proxy', 1);
+
 // Enable JSON parsing for incoming matchmaking payloads
 app.use(express.json());
 
@@ -9,10 +13,9 @@ app.use(express.json());
 let activeLobbies = [];
 
 // LOBBY EXPIRATION TIMEOUT (in milliseconds)
-// If a player closes their game or crashes, remove them after 45 seconds of silence
 const LOBBY_TIMEOUT = 45000; 
 
-// 1. ROOT ROUTE (Fixes the "Cannot GET /" message in your browser)
+// 1. ROOT ROUTE 
 app.get('/', (req, res) => {
     res.send(`
         <html>
@@ -30,8 +33,14 @@ app.get('/', (req, res) => {
 app.post('/api/host', (req, res) => {
     const { lobbyName, gameMode, port, currentPlayers, maxPlayers } = req.body;
     
-    // Automatically extract the host's actual public internet IP address
-    const hostIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    // 1. Grab raw incoming IP address from proxy headers or direct socket connection
+    let hostIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+    // 2. IP SANITIZATION: Strip out any IPv6 subnet mapping strings (e.g., "::ffff:")
+    // This leaves a clean, raw IPv4 address string that your launcher and proxy expect.
+    if (hostIp && hostIp.startsWith('::ffff:')) {
+        hostIp = hostIp.slice(7);
+    }
 
     if (!lobbyName || !port) {
         return res.status(400).json({ error: "Missing required lobby configuration parameters." });
@@ -50,11 +59,9 @@ app.post('/api/host', (req, res) => {
     };
 
     if (existingLobbyIndex !== -1) {
-        // Update existing registration timestamp (Heartbeat)
         activeLobbies[existingLobbyIndex] = lobbyData;
         console.log(`[HEARTBEAT] Ping received from: "${lobbyName}" (${hostIp})`);
     } else {
-        // Create brand new registration entry
         activeLobbies.push(lobbyData);
         console.log(`[NEW LOBBY] Registered: "${lobbyName}" | Mode: ${gameMode} | Host IP: ${hostIp}`);
     }
