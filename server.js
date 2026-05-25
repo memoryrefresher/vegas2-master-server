@@ -33,13 +33,18 @@ app.get('/', (req, res) => {
 app.post('/api/host', (req, res) => {
     const { lobbyName, gameMode, port, currentPlayers, maxPlayers } = req.body;
     
-    // 1. Grab raw incoming IP address from proxy headers or direct socket connection
-    let hostIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    // 1. Grab raw incoming IP address from proxy headers
+    let rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    let hostIp = "127.0.0.1"; // Fallback
 
-    // 2. IP SANITIZATION: Strip out any IPv6 subnet mapping strings (e.g., "::ffff:")
-    // This leaves a clean, raw IPv4 address string that your launcher and proxy expect.
-    if (hostIp && hostIp.startsWith('::ffff:')) {
-        hostIp = hostIp.slice(7);
+    if (rawIp) {
+        // THE FIX: Split the string by commas and grab the very first IP (Index 0)
+        hostIp = rawIp.split(',')[0].trim();
+        
+        // 2. IP SANITIZATION: Strip out IPv6 subnet mapping strings
+        if (hostIp.startsWith('::ffff:')) {
+            hostIp = hostIp.slice(7);
+        }
     }
 
     if (!lobbyName || !port) {
